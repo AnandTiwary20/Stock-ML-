@@ -95,48 +95,49 @@ start = start_date.strftime('%Y-%m-%d')
 end = end_date.strftime('%Y-%m-%d')
 
 def fetch_stock_data(symbol, start_date, end_date):
-    """Helper function to fetch stock data with better error handling and retries"""
-    import traceback
+    """Helper function to fetch stock data with better error handling"""
+    import time
     
-    # List of possible suffixes to try
+    # Clean the symbol (remove any existing suffix to avoid duplication)
+    base_symbol = symbol.replace('.NS', '').replace('.BO', '')
+    
+    # List of possible suffixes to try (empty string first, then .NS, then .BO)
     suffixes = ['', '.NS', '.BO']
     
-    for suffix in suffixes:
-        try:
-            current_symbol = symbol + suffix if suffix else symbol
-            st.write(f"Trying to fetch data for: {current_symbol}")
-            
-            # Try with a longer timeout and retries
-            data = yf.download(
-                current_symbol, 
-                start=start_date, 
-                end=end_date, 
-                progress=False,
-                timeout=10,  # Increase timeout
-                retry_delay=5,  # Add delay between retries
-                retry_count=3   # Number of retries
-            )
-            
-            if not data.empty:
-                st.success(f"Successfully fetched data for {current_symbol}")
-                return data, current_symbol
+    for attempt in range(3):  # Try up to 3 times
+        for suffix in suffixes:
+            try:
+                current_symbol = base_symbol + suffix if suffix else base_symbol
+                st.write(f"Attempt {attempt + 1}: Fetching data for {current_symbol}")
                 
-        except Exception as e:
-            error_details = traceback.format_exc()
-            st.warning(f"Attempt failed for {current_symbol}: {str(e)}")
-            st.text(f"Error details: {error_details}")
-            continue
+                # Simple download with timeout
+                data = yf.download(
+                    current_symbol, 
+                    start=start_date, 
+                    end=end_date, 
+                    progress=False,
+                    timeout=10
+                )
+                
+                if not data.empty:
+                    st.success(f"Successfully fetched data for {current_symbol}")
+                    return data, current_symbol
+                
+            except Exception as e:
+                st.warning(f"Attempt {attempt + 1} failed for {current_symbol}: {str(e)}")
+                time.sleep(2)  # Wait 2 seconds before retrying
+                continue
     
     # If we get here, all attempts failed
-    st.error(f"Failed to fetch data for {symbol} after trying all suffixes")
+    st.error(f"Failed to fetch data for {base_symbol} after multiple attempts")
     st.info("""
     Common issues:
-    1. Check if the stock symbol is correct
-    2. The stock exchange might be closed
-    3. There might be network restrictions in the deployment environment
-    4. Try again later if the issue persists
+    1. The stock symbol might be incorrect
+    2. The exchange might be closed
+    3. Network restrictions in the deployment environment
+    4. Try again later or check if the stock exchange is open
     """)
-    return None, symbol
+    return None, base_symbol
 
 try:
     # Try to download the stock data with enhanced handling
