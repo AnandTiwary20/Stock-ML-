@@ -47,39 +47,83 @@ st.subheader('Stock Data')
 st.write(data)
 
 # Split data into training and testing sets
-train_size = int(len(data) * 0.80)
+if len(data) < 2:
+    st.error("Error: Not enough data points for training and testing. Please try a different stock or date range.")
+    st.stop()
+
+train_size = max(100, int(len(data) * 0.80))  # Ensure minimum 100 points for training
+if train_size >= len(data):
+    st.error("Error: Not enough data points for training. Please try a different stock or date range.")
+    st.stop()
+
 data_train = data.iloc[0:train_size][['Close']].copy()
 data_test = data.iloc[train_size:][['Close']].copy()
+
+# Check if we have valid data
+if len(data_train) == 0 or len(data_test) == 0:
+    st.error("Error: Could not split data into training and testing sets. Please try a different date range.")
+    st.stop()
 
 # Initialize and fit scaler on training data
 from sklearn.preprocessing import MinMaxScaler
 scaler = MinMaxScaler(feature_range=(0, 1))
 
-# Scale the training data
-data_train_scaled = scaler.fit_transform(data_train)
-
-# Get last 100 days from training data for sequence creation
-pas_100_days = data_train.tail(100)
-
-# Create test data with lookback window
-test_data = pd.concat([pas_100_days, data_test])
-
 try:
+    # Scale the training data
+    if len(data_train) < 1:
+        raise ValueError("Training data is empty")
+        
+    data_train_scaled = scaler.fit_transform(data_train)
+    
+    # Get last 100 days from training data for sequence creation
+    pas_100_days = data_train.tail(100)
+    
+    # Create test data with lookback window
+    test_data = pd.concat([pas_100_days, data_test])
+    
+    if len(test_data) < 1:
+        raise ValueError("Test data is empty after concatenation")
+        
     # Scale the test data using the same scaler
     test_data_scaled = scaler.transform(test_data)
     
     # For LSTM, we need to create sequences
-    # This is a simplified version - you might need to adjust based on your model's expected input
+    sequence_length = 100  # Match this with your model's expected input shape
+    
+    if len(test_data_scaled) < sequence_length:
+        raise ValueError(f"Not enough data points for sequence creation. Need at least {sequence_length} points, but only have {len(test_data_scaled)}")
+    
     X_test = []
-    for i in range(100, len(test_data_scaled)):
-        X_test.append(test_data_scaled[i-100:i, 0])
+    for i in range(sequence_length, len(test_data_scaled)):
+        X_test.append(test_data_scaled[i-sequence_length:i, 0])
+    
+    if not X_test:  # Check if X_test is empty
+        raise ValueError("Could not create any sequences from the test data")
     
     X_test = np.array(X_test)
+    
+    # Check if we have any valid sequences
+    if len(X_test) == 0:
+        raise ValueError("No valid sequences could be created from the test data")
+    
+    # Reshape for LSTM [samples, time steps, features]
     X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
     
-    # If you need to make predictions here, uncomment the following:
-    # predicted_price = model.predict(X_test)
-    # predicted_price = scaler.inverse_transform(predicted_price)
+    # Try to load the model and make predictions
+    try:
+        # Make predictions
+        predicted_price = model.predict(X_test)
+        
+        # Check if predictions were made
+        if len(predicted_price) == 0:
+            raise ValueError("Model did not return any predictions")
+            
+        # Inverse transform the predictions
+        predicted_price = scaler.inverse_transform(predicted_price.reshape(-1, 1)).flatten()
+        
+    except Exception as e:
+        st.error(f"Error making predictions: {str(e)}")
+        st.stop()
     
 except Exception as e:
     st.error(f"Error in data preprocessing: {str(e)}")
@@ -218,10 +262,10 @@ with tab2:
         y_actual = y_actual[-prediction_days:]
         predict = predict[-prediction_days:]
         
-        # Get the corresponding dates for the test period
+        
         test_dates = data.index[-len(y_actual):]
         
-        # Calculate metrics
+       
         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
         
         mse = mean_squared_error(y_actual, predict)
