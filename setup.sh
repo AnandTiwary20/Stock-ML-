@@ -42,6 +42,9 @@ pip install \
     "tensorflow-cpu==2.9.1" \
     "scikit-learn==1.0.2"
 
+echo "Installing visualization dependencies..."
+pip install "altair==4.2.0"
+
 echo "Installing Streamlit..."
 pip install "streamlit==1.12.0"
 
