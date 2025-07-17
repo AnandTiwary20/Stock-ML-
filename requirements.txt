@@ -2,17 +2,19 @@
 numpy==1.21.6
 pandas==1.3.5
 matplotlib==3.5.3
-streamlit==1.12.0
 
 # Data fetching
 yfinance==0.2.3
 requests==2.28.1
 pandas-datareader==0.10.0
 
-# Machine Learning
-scikit-learn==1.0.2
+# Machine Learning - must be installed in this order
+protobuf>=3.9.2,<3.20  # TensorFlow compatible version
 tensorflow-cpu==2.9.1
-protobuf==3.20.1
+scikit-learn==1.0.2
+
+# Streamlit - installed after TensorFlow to ensure protobuf compatibility
+streamlit==1.12.0
 
 # Jupyter (optional, for development)
 # jupyter==1.0.0
