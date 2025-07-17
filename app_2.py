@@ -46,15 +46,44 @@ data = yf.download(stock, start, end)
 st.subheader('Stock Data')
 st.write(data)
 
-data_train = pd.DataFrame(data.Close[0: int(len(data) * 0.80)])
-data_test = pd.DataFrame(data.Close[int(len(data)*0.80): len(data)])
+# Split data into training and testing sets
+train_size = int(len(data) * 0.80)
+data_train = data.iloc[0:train_size][['Close']].copy()
+data_test = data.iloc[train_size:][['Close']].copy()
 
+# Initialize and fit scaler on training data
 from sklearn.preprocessing import MinMaxScaler
-scaler = MinMaxScaler(feature_range=(0,1))
+scaler = MinMaxScaler(feature_range=(0, 1))
 
+# Scale the training data
+data_train_scaled = scaler.fit_transform(data_train)
+
+# Get last 100 days from training data for sequence creation
 pas_100_days = data_train.tail(100)
-data_test = pd.concat([pas_100_days, data_train], ignore_index=True)
-data_test_scale = scaler.fit_transform(data_test)
+
+# Create test data with lookback window
+test_data = pd.concat([pas_100_days, data_test])
+
+try:
+    # Scale the test data using the same scaler
+    test_data_scaled = scaler.transform(test_data)
+    
+    # For LSTM, we need to create sequences
+    # This is a simplified version - you might need to adjust based on your model's expected input
+    X_test = []
+    for i in range(100, len(test_data_scaled)):
+        X_test.append(test_data_scaled[i-100:i, 0])
+    
+    X_test = np.array(X_test)
+    X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+    
+    # If you need to make predictions here, uncomment the following:
+    # predicted_price = model.predict(X_test)
+    # predicted_price = scaler.inverse_transform(predicted_price)
+    
+except Exception as e:
+    st.error(f"Error in data preprocessing: {str(e)}")
+    st.stop()
 
 
 st.subheader('Technical Analysis')
@@ -157,37 +186,48 @@ with tab2:
                                    help='Confidence interval for prediction range')
     
   
+    # Prepare sequences for prediction
+    sequence_length = 200  # or whatever sequence length your model expects
     x = []
     y = []
     
-  
-    data_test_scale_list = data_test_scale.tolist()
+    # Convert scaled data to list for easier manipulation
+    scaled_data = test_data_scaled.flatten().tolist()
     
-    for i in range(200, len(data_test_scale_list)):
-        x.append(data_test_scale_list[i-200:i])
-        y.append(data_test_scale_list[i][0])  
+    # Create sequences
+    for i in range(sequence_length, len(scaled_data)):
+        x.append(scaled_data[i-sequence_length:i])
+        y.append(scaled_data[i])
     
-    x, y = np.array(x), np.array(y)
+    # Convert to numpy arrays
+    x = np.array(x)
+    y = np.array(y)
     
-    #
+    # Reshape for LSTM [samples, time steps, features]
     if len(x) > 0:
+        x = np.reshape(x, (x.shape[0], x.shape[1], 1))
+        
+        # Make predictions
         predict = model.predict(x)
-        scale = 1/scaler.scale_[0]  # Get the scale factor for the first feature
-        predict = predict * scale
-        y = y * scale
+        
+        # Inverse transform the predictions
+        predict = scaler.inverse_transform(predict.reshape(-1, 1)).flatten()
+        y_actual = scaler.inverse_transform(y.reshape(-1, 1)).flatten()
         
         # Limit data to selected number of days
-        y = y[-prediction_days:]
+        y_actual = y_actual[-prediction_days:]
         predict = predict[-prediction_days:]
-        dates = data.index[-prediction_days:]
         
+        # Get the corresponding dates for the test period
+        test_dates = data.index[-len(y_actual):]
         
+        # Calculate metrics
         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
         
-        mse = mean_squared_error(y, predict)
+        mse = mean_squared_error(y_actual, predict)
         rmse = np.sqrt(mse)
-        mae = mean_absolute_error(y, predict)
-        r2 = r2_score(y, predict)
+        mae = mean_absolute_error(y_actual, predict)
+        r2 = r2_score(y_actual, predict)
         
         # Display metrics
         st.subheader('Model Performance')
@@ -205,50 +245,48 @@ with tab2:
         fig_pred = plt.figure(figsize=(14, 7), facecolor=COLORS['background'])
         ax = plt.gca()
         
-        # Plot historical data
-        ax.plot(dates, y, 
-                label='Historical Price', 
+        # Plot actual test data
+        ax.plot(test_dates, y_actual, 
+                label='Actual Price', 
                 color=COLORS['primary'], 
-                linewidth=2,
-                alpha=0.9)
-        
-        #
-        ax.plot(dates, predict, 
+                linewidth=2)
+                
+        # Plot predicted data
+        ax.plot(test_dates, predict, 
                 label='Predicted Price', 
-                color=COLORS['secondary'], 
-                linestyle='--', 
-                linewidth=2,
-                alpha=0.9)
-        
-        
-        confidence = (100 - confidence_level) / 200  
-        std_dev = np.std(predict)
-        upper_bound = predict * (1 + confidence)
-        lower_bound = predict * (1 - confidence)
-        
-        ax.fill_between(dates, 
-                       lower_bound.flatten(), 
-                       upper_bound.flatten(), 
-                       color=COLORS['secondary'], 
-                       alpha=0.2,
-                       label=f'{confidence_level}% Confidence Interval')
+                color=COLORS['accent'], 
+                linestyle='--',
+                linewidth=2)
+                
+        # Add confidence interval if selected
+        if confidence_level:
+            confidence = confidence_level / 100.0
+            residuals = y_actual - predict
+            std_dev = np.std(residuals)
+            margin = std_dev * (1.0 + confidence)
+            
+            ax.fill_between(test_dates, 
+                          predict - margin, 
+                          predict + margin,
+                          color=COLORS['volume'],
+                          alpha=0.3,
+                          label=f'{confidence_level}% Confidence Interval')
         
         # Customize the plot
-        ax.set_title(f'{stock} - Price Prediction', 
+        ax.set_title(f'Stock Price Prediction for {stock.upper()}', 
                     fontsize=16, 
                     pad=20, 
                     color=COLORS['text'])
-        ax.set_xlabel('Date', fontsize=12, color=COLORS['text'])
-        ax.set_ylabel('Price', fontsize=12, color=COLORS['text'])
-        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: "${:,.2f}".format(x)))
-        ax.legend(loc='upper left')
-        ax.grid(True, linestyle='--', alpha=0.4, color=COLORS['grid'])
+        ax.set_xlabel('Date', fontsize=12, labelpad=10, color=COLORS['text'])
+        ax.set_ylabel('Price ($)', fontsize=12, labelpad=10, color=COLORS['text'])
+        ax.grid(color=COLORS['grid'], linestyle='--', alpha=0.7)
+        ax.legend(loc='upper left', frameon=True, facecolor='white')
         
-   
-        for spine in ['top', 'right']:
-            ax.spines[spine].set_visible(False)
-        
+        # Format x-axis dates
+        plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
+        
+        # Display the plot in Streamlit
         st.pyplot(fig_pred)
         
        
