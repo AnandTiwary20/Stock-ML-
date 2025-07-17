@@ -37,14 +37,56 @@ st.markdown("""
 
 st.header('Stock Market Year Ahead Analysis')
 
-stock = st.text_input('Enter Stock Symnbol', 'GOOG')
-start = '2012-01-01'
-end = '2025-12-21'
+# Sidebar for user inputs
+with st.sidebar:
+    st.subheader('Stock Analysis Settings')
+    stock = st.text_input('Enter Stock Symbol', 'GOOG').strip().upper()
+    
+    # Date range selection with reasonable defaults
+    col1, col2 = st.columns(2)
+    with col1:
+        start_date = st.date_input('Start Date', value=pd.to_datetime('2012-01-01'), 
+                                 min_value=pd.to_datetime('1970-01-01'),
+                                 max_value=pd.to_datetime('today'))
+    with col2:
+        end_date = st.date_input('End Date', value=pd.to_datetime('today'),
+                               min_value=pd.to_datetime('1970-01-01'),
+                               max_value=pd.to_datetime('today'))
+    
+    # Validate date range
+    if start_date >= end_date:
+        st.error('Error: End date must be after start date')
+        st.stop()
 
-data = yf.download(stock, start, end)
+# Convert dates to string format for yfinance
+start = start_date.strftime('%Y-%m-%d')
+end = end_date.strftime('%Y-%m-%d')
 
-st.subheader('Stock Data')
-st.write(data)
+try:
+    # Try to download the stock data
+    data = yf.download(stock, start, end, progress=False)
+    
+    # Check if data was returned
+    if data.empty:
+        st.error(f"No data found for stock symbol '{stock}'. Please check the symbol and try again.")
+        st.stop()
+        
+    # Check if we have the 'Close' column
+    if 'Close' not in data.columns:
+        st.error(f"No price data available for {stock}. The data contains: {', '.join(data.columns)}")
+        st.stop()
+        
+    # Display the data
+    st.subheader('Stock Data')
+    st.write(data)
+    
+except Exception as e:
+    st.error(f"Error fetching data for {stock}: {str(e)}")
+    st.info("Common issues:\n"
+            "1. Check if the stock symbol is correct\n"
+            "2. Try a different date range\n"
+            "3. Check your internet connection")
+    st.stop()
 
 # Calculate minimum required data points
 min_data_points = 30  # Reduced minimum requirement
