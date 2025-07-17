@@ -7,13 +7,14 @@ import matplotlib.pyplot as plt
 
 
 COLORS = {
-    'primary': '#1f77b4',
-    'secondary': '#ff7f0e',
-    'accent': '#2ca02c',
-    'volume': 'rgba(128, 128, 128, 0.3)',
-    'background': '#f8f9fa',
-    'grid': '#e0e0e0',
-    'text': '#2c3e50'
+    'primary': '#1f77b4',  # Blue
+    'secondary': '#ff7f0e',  # Orange
+    'accent': '#2ca02c',  # Green
+    'volume': '#808080',  # Gray (replaced rgba with hex)
+    'background': '#f8f9fa',  # Light gray
+    'grid': '#e0e0e0',  # Lighter gray
+    'text': '#2c3e50',  # Dark gray/blue
+    'confidence': '#1f77b4'  # Blue for confidence interval
 }
 
 plt.rcParams['figure.facecolor'] = COLORS['background']
@@ -205,32 +206,29 @@ try:
     # Scale the test data using the same scaler
     test_data_scaled = scaler.transform(test_data)
     
-    # For LSTM, we need to create sequences
-    # Use a smaller sequence length for smaller datasets
-    max_sequence_length = min(30, len(test_data_scaled) - 1)  # Maximum of 30 or available data points - 1
-    min_sequence_length = 5  # Minimum sequence length
+    # For LSTM, we need to create sequences with the exact length the model expects
+    sequence_length = 200  # Fixed sequence length that matches the model's training
     
-    # Choose sequence length based on available data
-    sequence_length = min(30, max(min_sequence_length, len(test_data_scaled) // 3))
-    
-    st.sidebar.info(f"Using sequence length: {sequence_length} (based on available data)")
-    
-    if len(test_data_scaled) <= sequence_length:
-        st.warning(f"Warning: Limited data available. Using all available points for sequence creation.")
-        sequence_length = max(1, len(test_data_scaled) - 1)  # Use all but one point if possible
-    
-    X_test = []
-    # Create as many sequences as possible from the available data
-    for i in range(sequence_length, len(test_data_scaled)):
-        X_test.append(test_data_scaled[i-sequence_length:i, 0])
-    
-    if not X_test:  # If we couldn't create any sequences
-        # Try with a smaller sequence length as a fallback
-        sequence_length = min(5, len(test_data_scaled) - 1)
-        X_test = [test_data_scaled[-sequence_length:, 0]]  # Just use the last available sequence
+    # Check if we have enough data for the required sequence length
+    if len(test_data_scaled) < sequence_length + 1:  # +1 because we need one more for the target
+        st.error(f"Error: Not enough data points for prediction. Need at least {sequence_length + 1} days of data, but only have {len(test_data_scaled)}.")
+        st.info(f"Please select a longer date range or a stock with more historical data.")
+        st.stop()
         
-        if not X_test:
-            raise ValueError("Could not create any valid sequences from the available data")
+    st.sidebar.info(f"Using fixed sequence length: {sequence_length} (matches model's training)")
+    
+    # Create sequences of exactly 200 time steps
+    X_test = []
+    # We'll use the most recent 200 points for prediction
+    if len(test_data_scaled) >= sequence_length:
+        # Take the last 'sequence_length' points
+        sequence = test_data_scaled[-sequence_length:]
+        X_test.append(sequence)
+    
+    if not X_test:
+        st.error("Error: Could not create prediction sequence. Not enough data points.")
+        st.stop()
+        
     
     X_test = np.array(X_test)
     
@@ -386,15 +384,27 @@ with tab2:
         # Make predictions
         predict = model.predict(x)
         
-        # Inverse transform the predictions
-        predict = scaler.inverse_transform(predict.reshape(-1, 1)).flatten()
-        y_actual = scaler.inverse_transform(y.reshape(-1, 1)).flatten()
+        # Reshape for inverse transform
+        predict_reshaped = predict.reshape(-1, 1)
+        y_reshaped = y.reshape(-1, 1)
+        
+        # Create dummy arrays for inverse transform with the same number of features
+        dummy_array_predict = np.zeros((len(predict_reshaped), data_train.shape[1]))
+        dummy_array_y = np.zeros((len(y_reshaped), data_train.shape[1]))
+        
+        # Replace the first column with our values
+        dummy_array_predict[:, 0] = predict_reshaped.flatten()
+        dummy_array_y[:, 0] = y_reshaped.flatten()
+        
+        # Inverse transform
+        predict_inv = scaler.inverse_transform(dummy_array_predict)[:, 0]
+        y_actual = scaler.inverse_transform(dummy_array_y)[:, 0]
         
         # Limit data to selected number of days
         y_actual = y_actual[-prediction_days:]
-        predict = predict[-prediction_days:]
+        predict = predict_inv[-prediction_days:]
         
-        
+        # Get corresponding dates
         test_dates = data.index[-len(y_actual):]
         
        
@@ -417,36 +427,54 @@ with tab2:
         with metric_cols[3]:
             st.metric('R² Score', f"{r2:.4f}")
         
-        # Create prediction plot
-        fig_pred = plt.figure(figsize=(14, 7), facecolor=COLORS['background'])
-        ax = plt.gca()
-        
-        # Plot actual test data
-        ax.plot(test_dates, y_actual, 
-                label='Actual Price', 
-                color=COLORS['primary'], 
-                linewidth=2)
-                
-        # Plot predicted data
-        ax.plot(test_dates, predict, 
-                label='Predicted Price', 
-                color=COLORS['accent'], 
-                linestyle='--',
-                linewidth=2)
-                
-        # Add confidence interval if selected
-        if confidence_level:
-            confidence = confidence_level / 100.0
-            residuals = y_actual - predict
-            std_dev = np.std(residuals)
-            margin = std_dev * (1.0 + confidence)
+        # Create prediction plot with error handling
+        try:
+            fig_pred = plt.figure(figsize=(14, 7), facecolor=COLORS['background'])
+            ax = plt.gca()
             
-            ax.fill_between(test_dates, 
-                          predict - margin, 
-                          predict + margin,
-                          color=COLORS['volume'],
-                          alpha=0.3,
-                          label=f'{confidence_level}% Confidence Interval')
+            # Ensure we have valid data
+            if len(test_dates) != len(y_actual) or len(test_dates) != len(predict):
+                st.warning("Mismatched data lengths. Adjusting for plotting...")
+                min_len = min(len(test_dates), len(y_actual), len(predict))
+                test_dates = test_dates[-min_len:]
+                y_actual = y_actual[-min_len:]
+                predict = predict[-min_len:]
+            
+            # Plot actual test data
+            ax.plot(test_dates, y_actual, 
+                    label='Actual Price', 
+                    color=COLORS['primary'], 
+                    linewidth=2)
+                    
+            # Plot predicted data
+            ax.plot(test_dates, predict, 
+                    label='Predicted Price', 
+                    color=COLORS['accent'], 
+                    linestyle='--',
+                    linewidth=2)
+                    
+            # Add confidence interval if selected
+            if confidence_level and len(y_actual) > 0 and len(predict) > 0:
+                try:
+                    confidence = confidence_level / 100.0
+                    residuals = y_actual - predict
+                    std_dev = np.std(residuals)
+                    margin = std_dev * (1.0 + confidence)
+                    
+                    # Ensure we have valid data for fill_between
+                    if len(test_dates) == len(predict):
+                        ax.fill_between(test_dates, 
+                                    predict - margin, 
+                                    predict + margin,
+                                    color=COLORS['confidence'],
+                                    alpha=0.2,  # Reduced alpha for better visibility
+                                    label=f'{confidence_level}% Confidence Interval')
+                except Exception as e:
+                    st.warning(f"Could not plot confidence interval: {str(e)}")
+            
+        except Exception as e:
+            st.error(f"Error creating prediction plot: {str(e)}")
+            st.stop()
         
         # Customize the plot
         ax.set_title(f'Stock Price Prediction for {stock.upper()}', 
@@ -465,18 +493,32 @@ with tab2:
         # Display the plot in Streamlit
         st.pyplot(fig_pred)
         
-       
+        # Display prediction summary
         st.subheader('Prediction Summary')
+        
+        # Get the last values (already inverse transformed)
+        last_actual = y_actual[-1] if len(y_actual) > 0 else None
+        last_pred = predict[-1] if len(predict) > 0 else None
+        
+        # Calculate percentage change if we have valid values
+        price_change = 0.0
+        if last_actual is not None and last_pred is not None and last_actual > 0:
+            price_change = ((last_pred - last_actual) / last_actual) * 100
+        
+        # Get the appropriate currency symbol based on the exchange
+        currency_symbol = '₹' if exchange in ['NSE', 'BSE'] else '€' if exchange in ['EURONEXT'] else '£' if exchange in ['LSE'] else '¥' if exchange in ['TYO'] else '$'
+        
+        # Display the metrics
         pred_cols = st.columns(3)
         with pred_cols[0]:
-            st.metric('Current Price', f"${y[-1]:.2f}")
+            st.metric('Current Price', 
+                     f"{currency_symbol}{last_actual:.2f}" if last_actual is not None else 'N/A')
         with pred_cols[1]:
-            price_change = ((predict[-1] - y[-1]) / y[-1]) * 100
             st.metric('Predicted Price', 
-                     f"${predict[-1][0]:.2f}", 
-                     f"{price_change[0]:.2f}%")
+                     f"{currency_symbol}{last_pred:.2f}" if last_pred is not None else 'N/A',
+                     f"{price_change:+.2f}%" if last_pred is not None and last_actual is not None else None)
         with pred_cols[2]:
-            st.metric('Confidence', f"{confidence_level}%")
+            st.metric('Confidence', f"{confidence_level}%" if confidence_level else 'N/A')
     else:
         st.warning("No prediction data available. Please ensure the model is properly loaded and data is available.")
 
