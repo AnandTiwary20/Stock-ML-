@@ -40,16 +40,47 @@ st.header('Stock Market Year Ahead Analysis')
 # Sidebar for user inputs
 with st.sidebar:
     st.subheader('Stock Analysis Settings')
-    stock = st.text_input('Enter Stock Symbol', 'GOOG').strip().upper()
+    
+    # Exchange selection
+    exchange = st.selectbox(
+        'Select Stock Exchange',
+        ('NSE', 'BSE', 'NYSE', 'NASDAQ', 'Other')
+    )
+    
+    # Stock symbol input with exchange-specific examples
+    if exchange == 'NSE':
+        example = 'RELIANCE'  # Example for NSE
+        suffix = '.NS'
+    elif exchange == 'BSE':
+        example = '500325'  # Example for BSE (Reliance Industries)
+        suffix = '.BO'
+    elif exchange == 'NYSE':
+        example = 'GE'  # Example for NYSE
+        suffix = ''
+    elif exchange == 'NASDAQ':
+        example = 'AAPL'  # Example for NASDAQ
+        suffix = ''
+    else:  # Other
+        example = 'GOOG'
+        suffix = ''
+    
+    # Stock symbol input
+    stock = st.text_input(f'Enter Stock Symbol (e.g., {example})', example).strip().upper()
+    
+    # Add exchange suffix if needed
+    if exchange in ['NSE', 'BSE'] and not stock.endswith(suffix):
+        stock += suffix
     
     # Date range selection with reasonable defaults
     col1, col2 = st.columns(2)
     with col1:
-        start_date = st.date_input('Start Date', value=pd.to_datetime('2012-01-01'), 
+        start_date = st.date_input('Start Date', 
+                                 value=pd.to_datetime('2020-01-01'), 
                                  min_value=pd.to_datetime('1970-01-01'),
                                  max_value=pd.to_datetime('today'))
     with col2:
-        end_date = st.date_input('End Date', value=pd.to_datetime('today'),
+        end_date = st.date_input('End Date', 
+                               value=pd.to_datetime('today'),
                                min_value=pd.to_datetime('1970-01-01'),
                                max_value=pd.to_datetime('today'))
     
@@ -62,13 +93,47 @@ with st.sidebar:
 start = start_date.strftime('%Y-%m-%d')
 end = end_date.strftime('%Y-%m-%d')
 
+def fetch_stock_data(symbol, start_date, end_date):
+    """Helper function to fetch stock data with better error handling"""
+    try:
+        # Try downloading with the symbol as-is first
+        data = yf.download(symbol, start=start_date, end=end_date, progress=False)
+        
+        # If no data, try with .NS suffix for NSE stocks
+        if data.empty and not symbol.endswith('.NS'):
+            st.info(f"Trying with NSE suffix for {symbol}...")
+            symbol_ns = f"{symbol}.NS"
+            data = yf.download(symbol_ns, start=start_date, end=end_date, progress=False)
+            if not data.empty:
+                return data, symbol_ns  # Return the data and the modified symbol
+        
+        # If still no data, try with .BO for BSE
+        if data.empty and not (symbol.endswith('.NS') or symbol.endswith('.BO')):
+            st.info(f"Trying with BSE suffix for {symbol}...")
+            symbol_bo = f"{symbol}.BO"
+            data = yf.download(symbol_bo, start=start_date, end=end_date, progress=False)
+            if not data.empty:
+                return data, symbol_bo  # Return the data and the modified symbol
+        
+        return data, symbol
+        
+    except Exception as e:
+        st.error(f"Error fetching data: {str(e)}")
+        return None, symbol
+
 try:
-    # Try to download the stock data
-    data = yf.download(stock, start, end, progress=False)
+    # Try to download the stock data with enhanced handling
+    data, stock = fetch_stock_data(stock, start, end)
     
     # Check if data was returned
-    if data.empty:
+    if data is None or data.empty:
         st.error(f"No data found for stock symbol '{stock}'. Please check the symbol and try again.")
+        st.info("""
+        Common issues:
+        1. Make sure the stock symbol is correct
+        2. For Indian stocks, try with .NS (NSE) or .BO (BSE) suffix
+        3. Try a different date range
+        """)
         st.stop()
         
     # Check if we have the 'Close' column
