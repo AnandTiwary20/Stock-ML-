@@ -95,32 +95,48 @@ start = start_date.strftime('%Y-%m-%d')
 end = end_date.strftime('%Y-%m-%d')
 
 def fetch_stock_data(symbol, start_date, end_date):
-    """Helper function to fetch stock data with better error handling"""
-    try:
-        # Try downloading with the symbol as-is first
-        data = yf.download(symbol, start=start_date, end=end_date, progress=False)
-        
-        # If no data, try with .NS suffix for NSE stocks
-        if data.empty and not symbol.endswith('.NS'):
-            st.info(f"Trying with NSE suffix for {symbol}...")
-            symbol_ns = f"{symbol}.NS"
-            data = yf.download(symbol_ns, start=start_date, end=end_date, progress=False)
+    """Helper function to fetch stock data with better error handling and retries"""
+    import traceback
+    
+    # List of possible suffixes to try
+    suffixes = ['', '.NS', '.BO']
+    
+    for suffix in suffixes:
+        try:
+            current_symbol = symbol + suffix if suffix else symbol
+            st.write(f"Trying to fetch data for: {current_symbol}")
+            
+            # Try with a longer timeout and retries
+            data = yf.download(
+                current_symbol, 
+                start=start_date, 
+                end=end_date, 
+                progress=False,
+                timeout=10,  # Increase timeout
+                retry_delay=5,  # Add delay between retries
+                retry_count=3   # Number of retries
+            )
+            
             if not data.empty:
-                return data, symbol_ns  # Return the data and the modified symbol
-        
-        # If still no data, try with .BO for BSE
-        if data.empty and not (symbol.endswith('.NS') or symbol.endswith('.BO')):
-            st.info(f"Trying with BSE suffix for {symbol}...")
-            symbol_bo = f"{symbol}.BO"
-            data = yf.download(symbol_bo, start=start_date, end=end_date, progress=False)
-            if not data.empty:
-                return data, symbol_bo  # Return the data and the modified symbol
-        
-        return data, symbol
-        
-    except Exception as e:
-        st.error(f"Error fetching data: {str(e)}")
-        return None, symbol
+                st.success(f"Successfully fetched data for {current_symbol}")
+                return data, current_symbol
+                
+        except Exception as e:
+            error_details = traceback.format_exc()
+            st.warning(f"Attempt failed for {current_symbol}: {str(e)}")
+            st.text(f"Error details: {error_details}")
+            continue
+    
+    # If we get here, all attempts failed
+    st.error(f"Failed to fetch data for {symbol} after trying all suffixes")
+    st.info("""
+    Common issues:
+    1. Check if the stock symbol is correct
+    2. The stock exchange might be closed
+    3. There might be network restrictions in the deployment environment
+    4. Try again later if the issue persists
+    """)
+    return None, symbol
 
 try:
     # Try to download the stock data with enhanced handling
