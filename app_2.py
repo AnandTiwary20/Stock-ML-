@@ -46,23 +46,34 @@ data = yf.download(stock, start, end)
 st.subheader('Stock Data')
 st.write(data)
 
-# Split data into training and testing sets
-if len(data) < 2:
-    st.error("Error: Not enough data points for training and testing. Please try a different stock or date range.")
+# Calculate minimum required data points
+min_data_points = 30  # Reduced minimum requirement
+
+# Check if we have enough data
+if len(data) < min_data_points:
+    st.error(f"Error: Not enough historical data available. Found {len(data)} points, but need at least {min_data_points}. Please try a different stock or a longer date range.")
     st.stop()
 
-train_size = max(100, int(len(data) * 0.80))  # Ensure minimum 100 points for training
-if train_size >= len(data):
-    st.error("Error: Not enough data points for training. Please try a different stock or date range.")
-    st.stop()
+# Calculate training set size (80% of available data, but at least 20 points)
+train_ratio = 0.8
+min_train_size = 20  # Reduced minimum training size
 
+train_size = max(min_train_size, int(len(data) * train_ratio))
+# Ensure we leave at least some data for testing
+if train_size >= len(data) - 5:  # Leave at least 5 points for testing
+    train_size = max(min_train_size, len(data) - 5)  # Adjust to leave at least 5 points for testing
+
+# Split the data
 data_train = data.iloc[0:train_size][['Close']].copy()
 data_test = data.iloc[train_size:][['Close']].copy()
 
-# Check if we have valid data
-if len(data_train) == 0 or len(data_test) == 0:
-    st.error("Error: Could not split data into training and testing sets. Please try a different date range.")
+# Check if we have valid data after split
+if len(data_train) < min_train_size or len(data_test) < 5:
+    st.error(f"Error: Could not create valid training and testing sets. Found {len(data_train)} training and {len(data_test)} testing points. Try a longer date range.")
     st.stop()
+
+# Log data split for debugging
+st.sidebar.info(f"Using {len(data_train)} points for training and {len(data_test)} points for testing.")
 
 # Initialize and fit scaler on training data
 from sklearn.preprocessing import MinMaxScaler
@@ -88,17 +99,31 @@ try:
     test_data_scaled = scaler.transform(test_data)
     
     # For LSTM, we need to create sequences
-    sequence_length = 100  # Match this with your model's expected input shape
+    # Use a smaller sequence length for smaller datasets
+    max_sequence_length = min(30, len(test_data_scaled) - 1)  # Maximum of 30 or available data points - 1
+    min_sequence_length = 5  # Minimum sequence length
     
-    if len(test_data_scaled) < sequence_length:
-        raise ValueError(f"Not enough data points for sequence creation. Need at least {sequence_length} points, but only have {len(test_data_scaled)}")
+    # Choose sequence length based on available data
+    sequence_length = min(30, max(min_sequence_length, len(test_data_scaled) // 3))
+    
+    st.sidebar.info(f"Using sequence length: {sequence_length} (based on available data)")
+    
+    if len(test_data_scaled) <= sequence_length:
+        st.warning(f"Warning: Limited data available. Using all available points for sequence creation.")
+        sequence_length = max(1, len(test_data_scaled) - 1)  # Use all but one point if possible
     
     X_test = []
+    # Create as many sequences as possible from the available data
     for i in range(sequence_length, len(test_data_scaled)):
         X_test.append(test_data_scaled[i-sequence_length:i, 0])
     
-    if not X_test:  # Check if X_test is empty
-        raise ValueError("Could not create any sequences from the test data")
+    if not X_test:  # If we couldn't create any sequences
+        # Try with a smaller sequence length as a fallback
+        sequence_length = min(5, len(test_data_scaled) - 1)
+        X_test = [test_data_scaled[-sequence_length:, 0]]  # Just use the last available sequence
+        
+        if not X_test:
+            raise ValueError("Could not create any valid sequences from the available data")
     
     X_test = np.array(X_test)
     
