@@ -5,7 +5,7 @@ from keras.models import load_model
 import streamlit as st
 import matplotlib.pyplot as plt
 
-# Define color scheme
+
 COLORS = {
     'primary': '#1f77b4',
     'secondary': '#ff7f0e',
@@ -16,7 +16,6 @@ COLORS = {
     'text': '#2c3e50'
 }
 
-# Set custom plot styles without using seaborn
 plt.rcParams['figure.facecolor'] = COLORS['background']
 plt.rcParams['axes.facecolor'] = COLORS['background']
 plt.rcParams['grid.color'] = COLORS['grid']
@@ -27,7 +26,7 @@ plt.rcParams['ytick.color'] = COLORS['text']
 
 model = load_model("Stock Predictions Model.keras")
 
-# Add header with yfinance note
+
 st.markdown("""
 <div style='background-color:#f0f2f6; padding:10px; border-radius:5px; margin-bottom:20px;'>
     <p style='text-align:center; color:#1f77b4; font-weight:bold; margin:0;'>
@@ -57,20 +56,20 @@ pas_100_days = data_train.tail(100)
 data_test = pd.concat([pas_100_days, data_train], ignore_index=True)
 data_test_scale = scaler.fit_transform(data_test)
 
-# Price Analysis Section
+
 st.subheader('Technical Analysis')
 
-# Calculate moving averages
+
 ma_20_days = data.Close.rolling(20).mean()
 ma_50_days = data.Close.rolling(50).mean()
 ma_100_days = data.Close.rolling(100).mean()
 ma_200_days = data.Close.rolling(200).mean()
 
-# Create tabs for different chart views
+
 tab1, tab2, tab3 = st.tabs(["Moving Averages", "Price Prediction", "Volume Analysis"])
 
 with tab1:
-    # Enhanced Moving Averages Chart with better styling
+  
     fig1 = plt.figure(figsize=(14, 8), facecolor=COLORS['background'])
     ax1 = plt.gca()
     
@@ -82,8 +81,7 @@ with tab1:
             linewidth=2.5,
             alpha=0.9)
     
-    # Add gradient fill under the price line
-    # Ensure data is 1D by using .values.ravel()
+   
     y1 = np.full(len(data[close_col]), data[close_col].min())
     y2 = data[close_col].values.ravel()
     x = data.index
@@ -93,7 +91,7 @@ with tab1:
                     color=COLORS['primary'], 
                     alpha=0.1)
     
-    # Plot moving averages with distinct styles
+    
     ma_styles = [
         (ma_20_days, COLORS['secondary'], '--', 1.2, '20-day MA'),
         (ma_50_days, '#d62728', '-', 1.5, '50-day MA'),
@@ -110,12 +108,12 @@ with tab1:
     ax1.set_xlabel('Date', fontsize=12, fontweight='bold', color=COLORS['text'])
     ax1.set_ylabel('Price', fontsize=12, fontweight='bold', color=COLORS['text'])
     
-    # Format y-axis with dollar signs and proper formatting
+   
     ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, loc: "${:,.0f}".format(x)))
     
-    # Add a title with the current price
-    current_price = float(data[close_col].iloc[-1])  # Convert to float to ensure scalar value
-    stock_str = str(stock)  # Ensure stock is a string
+    
+    current_price = float(data[close_col].iloc[-1])  
+    stock_str = str(stock) 
     ax1.set_title(
         f"{stock_str} - Current Price: ${current_price:,.2f}", 
         fontsize=16, 
@@ -124,7 +122,7 @@ with tab1:
         color=COLORS['text']
     )
     
-    # Add a legend with a nice background
+ 
     legend = ax1.legend(
         loc='upper left', 
         frameon=True, 
@@ -134,23 +132,23 @@ with tab1:
         fontsize=10
     )
     
-    # Remove top and right spines
+    #
     for spine in ['top', 'right']:
         ax1.spines[spine].set_visible(False)
     
     plt.tight_layout()
     
-    # Add some space around the plot
+    
     plt.subplots_adjust(top=0.9, bottom=0.1, left=0.08, right=0.95)
     
-    # Display the plot in Streamlit
+   
     st.pyplot(fig1)
 
 
 with tab2:
     st.subheader('Price Prediction Settings')
     
-    # Add prediction controls
+    
     col1, col2 = st.columns(2)
     with col1:
         prediction_days = st.slider('Number of Days to Show', 30, 365, 90, 
@@ -158,20 +156,20 @@ with tab2:
         confidence_level = st.slider('Confidence Level', 70, 99, 90, 5,
                                    help='Confidence interval for prediction range')
     
-    # Prepare data for prediction
+  
     x = []
     y = []
     
-    # Convert to list for appending
+  
     data_test_scale_list = data_test_scale.tolist()
     
     for i in range(200, len(data_test_scale_list)):
         x.append(data_test_scale_list[i-200:i])
-        y.append(data_test_scale_list[i][0])  # Access first element of the inner list
+        y.append(data_test_scale_list[i][0])  
     
     x, y = np.array(x), np.array(y)
     
-    # Make predictions
+    #
     if len(x) > 0:
         predict = model.predict(x)
         scale = 1/scaler.scale_[0]  # Get the scale factor for the first feature
@@ -183,7 +181,7 @@ with tab2:
         predict = predict[-prediction_days:]
         dates = data.index[-prediction_days:]
         
-        # Calculate prediction metrics
+        
         from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
         
         mse = mean_squared_error(y, predict)
@@ -214,7 +212,7 @@ with tab2:
                 linewidth=2,
                 alpha=0.9)
         
-        # Plot predicted values
+        #
         ax.plot(dates, predict, 
                 label='Predicted Price', 
                 color=COLORS['secondary'], 
@@ -222,8 +220,8 @@ with tab2:
                 linewidth=2,
                 alpha=0.9)
         
-        # Calculate and plot confidence interval
-        confidence = (100 - confidence_level) / 200  # Half for each side
+        
+        confidence = (100 - confidence_level) / 200  
         std_dev = np.std(predict)
         upper_bound = predict * (1 + confidence)
         lower_bound = predict * (1 - confidence)
@@ -246,14 +244,14 @@ with tab2:
         ax.legend(loc='upper left')
         ax.grid(True, linestyle='--', alpha=0.4, color=COLORS['grid'])
         
-        # Remove top and right spines
+   
         for spine in ['top', 'right']:
             ax.spines[spine].set_visible(False)
         
         plt.tight_layout()
         st.pyplot(fig_pred)
         
-        # Display prediction summary
+       
         st.subheader('Prediction Summary')
         pred_cols = st.columns(3)
         with pred_cols[0]:
