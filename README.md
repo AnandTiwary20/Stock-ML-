@@ -1,5 +1,7 @@
 #  Stock Market Analysis & Price Prediction using Python 🧠
+ # ** LIVE PROJECT DEPLOYED **
 
+ **DEPLOYED LINK** : https://stocksanalysisandpre.streamlit.app/
 A complete data science and Machine Learning project that analyzes stock market data, visualizes trends, and predicts future prices using machine learning and deep learning models. Built using Python and its powerful ecosystem of data libraries.
 
 ---
@@ -24,7 +26,7 @@ Here’s a high-level overview of how the project functions:
    - Creates 100-day and 200-day moving averages for trend visualization.
 
 3. **Exploratory Data Analysis (EDA)**
-   - Visualizes historical trends using `matplotlib` and `seaborn`.
+   - Visualizes historical trends using `matplotlib`.
    - Shows price patterns, volume distribution, and volatility.
 
 4. **Model Training (LSTM)**
@@ -44,13 +46,14 @@ Here’s a high-level overview of how the project functions:
      - Moving averages
      - Future predictions
 
+
 ## 🛠️ Tech Stack
 
 | Purpose               | Library / Tool        |
 |-----------------------|-----------------------|
 | Data Fetching         | `yfinance`            |
 | Data Manipulation     | `pandas`, `numpy`     |
-| Visualization         | `matplotlib`, `seaborn` |
+| Visualization         | `matplotlib` |
 | Machine Learning      | `scikit-learn`        |
 | Deep Learning         | `keras`, `tensorflow` |
 | Web App UI (Optional) | `streamlit`           |
