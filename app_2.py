@@ -31,7 +31,8 @@ model = load_model("Stock Predictions Model.keras")
 st.markdown("""
 <div style='background-color:#f0f2f6; padding:10px; border-radius:5px; margin-bottom:20px;'>
     <p style='text-align:center; color:#1f77b4; font-weight:bold; margin:0;'>
-     yfinance - Enter any valid stock symbol to analyze
+     yfinance - Enter any valid stock symbol to analyze yfinance 
+       stock symbol-TATAMOTORS.NS , JIOFIN.NS , HDFCBANK.NS
     </p>
 </div>
 """, unsafe_allow_html=True)
