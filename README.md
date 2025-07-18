@@ -47,7 +47,7 @@ Here’s a high-level overview of how the project functions:
      - Future predictions
 
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 | Purpose               | Library / Tool        |
 |-----------------------|-----------------------|
